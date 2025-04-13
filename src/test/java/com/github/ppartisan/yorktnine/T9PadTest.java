@@ -15,7 +15,7 @@ class T9PadTest {
 
     @BeforeEach
     void setUp() {
-        pad = new StubT9Pad();
+        pad = YorkT9Pad.create();
     }
 
     @Test

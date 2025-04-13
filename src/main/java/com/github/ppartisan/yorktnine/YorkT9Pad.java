@@ -1,52 +1,36 @@
 package com.github.ppartisan.yorktnine;
 
 import java.util.*;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+
+import static java.util.stream.Collectors.toSet;
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
 class YorkT9Pad implements T9Pad {
 
-    HashMap<Integer, Set<Character>> pad;
+    private static final String KEY_NULL = "'key' must not be null.";
+    private static final String LETTERS_NULL = "'letters' must not be null.";
+    private static final String KEY_NOT_IN_RANGE = "'key' not in range 0 to 9 (inclusive).";
+    private static final String LETTERS_ALREADY_MAPPED = "Character in 'letters' already has a mapping.";
 
-    YorkT9Pad() {
-        pad = new HashMap<Integer, Set<Character>>();
+    private final Map<Integer, Set<Character>> pad;
+
+    static T9Pad create() {
+        return new YorkT9Pad();
     }
 
-    /**
-     * Construct an empty keypad. Numeric key and mapped characters must be added
-     * via the method addKey(Integer, String).
-     */
-    YorkT9Pad(HashMap<Integer, Set<Character>> pad) {
-        this.pad = pad;
+    private YorkT9Pad() {
+        pad = new HashMap<>();
     }
 
     @Override
     public void addKey(Integer key, String letters) {
-        if (letters == null || key == null || key < 0 || key > 9) {
-            throw new IllegalArgumentException();
-        }
-        Set<Character> currentLetters = pad.get(key);
-        if (currentLetters == null) {
-            currentLetters = new HashSet<>();
-        }
-        for (int i = 0; i < letters.length() - 1; i++) {
-            if (getPadLetters().contains(letters.charAt(i))) {
-                throw new IllegalArgumentException();
-            }
-            currentLetters.add(letters.charAt(i));
-        }
-        pad.put(key, currentLetters);
-    }
-    @Override
-    public String toString() {
-        String output = "<T9Pad:\n";
-        for (Integer key : pad.keySet()) {
-            output += key + ":";
-            for (Character letter : pad.get(key)) {
-                output += letter;
-            }
-            output += "\n";
-        }
-        output += ">";
-        return output;
+        raiseIf(isNull(key), KEY_NULL);
+        raiseIf(isNull(letters), LETTERS_NULL);
+        raiseIf(keyNotInRange(key), KEY_NOT_IN_RANGE);
+        raiseIf(characterAlreadyMapped(letters), LETTERS_ALREADY_MAPPED);
+        pad.put(key, asCharacterSet(letters));
     }
 
     @Override
@@ -56,32 +40,71 @@ class YorkT9Pad implements T9Pad {
 
     @Override
     public Set<Character> getPadLetters() {
-        Set<Character> letters = new HashSet<>();
-        for (Integer key : pad.keySet()) {
-            letters.addAll(pad.get(key));
-        }
-        return letters;
+        return currentCharacters();
     }
+
     public Integer getKeyCode(Character letter) {
-        for (Integer key : pad.keySet()) {
-            if (pad.get(key).contains(letter)) { // found the key
-                return key;
-            }
-        }
-        throw new IllegalArgumentException();
+        return pad.entrySet().stream()
+                .filter(hasLetter(letter))
+                .findAny()
+                .map(Map.Entry::getKey)
+                .orElseThrow(IllegalArgumentException::new);
     }
 
     @Override
-    public boolean isTextonym(String word1, String word2) {
-        return word2T9(word1).equals(word2T9(word2));
-    }
-
-    private String word2T9(String word) {
-        StringBuilder output = new StringBuilder();
-        for (int i = 0; i < word.length() - 1; i++) {
-            output.append(getKeyCode(word.charAt(i)));
+    public boolean isTextonym(String w1, String w2) {
+        //Get codes for both words. Could check equals?
+        if(w1 == null || w2 == null || !Objects.equals(w1.length(), w2.length()))
+            return false;
+        for(int i = 0; i < w1.length(); i++){
+            final Integer kc1 = getKeyCode(w1.charAt(i));
+            final Integer kc2 = getKeyCode(w2.charAt(i));
+            if(!Objects.equals(kc1, kc2))
+                return false;
         }
-        return output.toString();
+        return true;
     }
 
+    private Set<Character> currentCharacters() {
+        return pad.values().stream()
+                .flatMap(Collection::stream)
+                .collect(toUnmodifiableSet());
+    }
+
+    private Supplier<Boolean> characterAlreadyMapped(String input) {
+        return  () -> {
+            final Set<Character> current = currentCharacters();
+            final Set<Character> proposed = asCharacterSet(input);
+            for(Character c : proposed) {
+                if (current.contains(c))
+                    return true;
+            }
+            return false;
+        };
+    }
+
+    private Predicate<Map.Entry<Integer, Set<Character>>> hasLetter(Character letter) {
+        return entry -> entry.getValue().contains(letter);
+    }
+
+    private Supplier<Boolean> isNull(Object o) {
+        return () -> Objects.isNull(o);
+    }
+
+    private Supplier<Boolean> keyNotInRange(int key) {
+        return () -> key < 0 || key > 9;
+    }
+
+    private void raiseIf(Supplier<Boolean> cond) {
+        raiseIf(cond, null);
+    }
+
+    private void raiseIf(Supplier<Boolean> cond, String msg) {
+        if(cond.get())
+            throw new IllegalArgumentException(msg);
+    }
+
+    private static Set<Character> asCharacterSet(String in) {
+        return in.chars().mapToObj(code -> (char) code).collect(toSet());
+    }
 }
